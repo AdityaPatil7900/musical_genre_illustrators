@@ -11,10 +11,10 @@
 # ============================================================================
 set -uo pipefail
 
-STATE_DIR="/home/student-admin/musical_genre_illustrator/.watchdog"
+STATE_DIR="/home/student-admin/musical_genre_illustrators/.watchdog"
 mkdir -p "$STATE_DIR"
 LOG="$STATE_DIR/watchdog.log"
-ENV_FILE="/home/student-admin/musical_genre_illustrator/.env"
+ENV_FILE="/home/student-admin/musical_genre_illustrators/deploy/.env"
 [ -f "$ENV_FILE" ] && source "$ENV_FILE"
 
 log() { echo "$(date -Iseconds) $*" >> "$LOG"; }

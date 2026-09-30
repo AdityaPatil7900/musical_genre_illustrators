@@ -31,8 +31,15 @@ itself**, layered with systemd's own restart supervision:
    ```
    student-admin ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart genre-api.service, /usr/bin/systemctl restart genre-local.service
    ```
-   This was flagged by the LLM security review (`docs/LLM_SECURITY_REVIEW.md`,
-   finding #1) and implemented as the fix, rather than broader sudo access.
+   This was flagged by the LLM security review (`Docs/LLM_SECURITY_REVIEW.md`,
+   finding #1) as the recommended fix. In practice, `student-admin` already
+   has blanket `(ALL) NOPASSWD: ALL` from the course-provisioned
+   `/etc/sudoers.d/90-cloud-init-users`, independent of anything our deploy
+   scripts configure. We did not add the entry above or edit the base sudo
+   policy, since doing so on a shared course VM risks locking out sudo
+   entirely on a syntax mistake for a single-user, WPI-network-gated VM. See
+   `Docs/LLM_SECURITY_REVIEW.md` for the full reasoning — this is recorded as
+   an accepted, un-actioned recommendation, not a completed fix.
 
 ## What this does NOT cover: full VM wipe
 

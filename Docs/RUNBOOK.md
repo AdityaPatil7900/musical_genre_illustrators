@@ -51,14 +51,20 @@ minutes (model downloads on first classifier/diffusion pipeline load).
 
 ```bash
 ssh -i D:\CS553\tmp\mykey -p 22012 student-admin@paffenroth-23.dyn.wpi.edu
-nano musical_genre_illustrator/.env
+nano musical_genre_illustrators/deploy/.env
 # Set real HF_TOKEN and DISCORD_WEBHOOK_URL, save, exit
 sudo systemctl restart genre-api.service genre-local.service
-chmod 600 musical_genre_illustrator/.env
+chmod 600 musical_genre_illustrators/deploy/.env
 exit
 ```
 
-## 5. Add the scoped sudoers entry for the watchdog (one-time)
+## 5. (Optional, not currently applied) Scoped sudoers entry for the watchdog
+
+`student-admin` already has blanket `(ALL) NOPASSWD: ALL` from the
+course-provisioned `/etc/sudoers.d/90-cloud-init-users`, so this step is not
+required for the watchdog to function and was deliberately not applied (see
+`Docs/LLM_SECURITY_REVIEW.md` finding #1 and `Docs/RECOVERY.md`). If you want
+to narrow sudo access anyway:
 
 ```bash
 ssh -i D:\CS553\tmp\mykey -p 22012 student-admin@paffenroth-23.dyn.wpi.edu
@@ -79,8 +85,10 @@ Gradio UI renders and a test audio file classifies + generates an image.
 
 ## 7. Run the resilience tests
 
-Follow `docs/RESILIENCE_TESTING.md` step by step, filling in the `TODO`
-sections with your actual output.
+Follow `Docs/RESILIENCE_TESTING.md` step by step. Results from the
+2026-09-30 test run are already filled in there and summarized in
+`Docs/REPORT.md` Section 3 — re-run them if you make further changes to
+`watchdog.sh`, `monitor.py`, or the systemd units.
 
 ## 8. (Optional) Set up the external Windows health checker
 

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import psutil
 import requests
 
-STATE_DIR = os.environ.get("WATCHDOG_STATE_DIR", "/home/student-admin/musical_genre_illustrator/.watchdog")
+STATE_DIR = os.environ.get("WATCHDOG_STATE_DIR", "/home/student-admin/musical_genre_illustrators/.watchdog")
 FLAG_FILE = os.path.join(STATE_DIR, "degraded_mode.flag")
 LOG_FILE = os.path.join(STATE_DIR, "monitor.log")
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")

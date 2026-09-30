@@ -84,10 +84,18 @@ acting in a separate reviewer pass over the finished `deploy/` directory
 
 ## What I'm implementing based on this review
 
-- ✅ **#2 (`.env` permissions)** — added `chmod 600 .env` to the deploy
-  runbook (see `docs/RUNBOOK.md` step 6).
-- ✅ **#1 (scoped sudoers)** — documented the exact `sudoers.d` entry to use
-  in `docs/RECOVERY.md` instead of granting blanket NOPASSWD sudo.
+- ✅ **#2 (`.env` permissions)** — verified `chmod 600` on the VM's
+  `deploy/.env` (`-rw------- student-admin student-admin`).
+- ⏭️ **#1 (scoped sudoers) — recommended but NOT implemented.** Checked
+  `sudo -l` on the VM: `student-admin` has `(ALL) NOPASSWD: ALL`, sourced
+  from `/etc/sudoers.d/90-cloud-init-users`, a cloud-init file provisioned by
+  the course VM image itself, not by our deploy scripts. We chose not to
+  edit base sudo policy on a shared course VM to narrow this — the blast
+  radius of a sudoers typo (locking out all sudo access, including from the
+  professor's default key path) outweighs the benefit for a single-user
+  VM that's already gated behind WPI-network SSH access with a rotated key.
+  Documented here as an accepted, un-actioned finding rather than a
+  completed fix.
 - ⏭️ **#5 (flap-damping)** — noted as a documented limitation/future
   improvement in the report (`docs/REPORT.md`) rather than implemented, given
   the time budget for this case study; `Restart=always` + the 2-minute
