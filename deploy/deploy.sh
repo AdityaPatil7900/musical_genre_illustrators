@@ -30,8 +30,8 @@ DEFAULT_KEY="${DEFAULT_KEY:-../../student-admin_key}"      # provided by profess
 PERSONAL_KEY_PUB="${PERSONAL_KEY_PUB:-../../tmp/mykey.pub}" # your own keypair
 PERSONAL_KEY_PRIV="${PERSONAL_KEY_PRIV:-../../tmp/mykey}"
 
-REPO_URL="${REPO_URL:-https://github.com/sanikadhanwate/musical_genre_illustrator.git}"
-REPO_DIR="${REPO_DIR:-musical_genre_illustrator}"
+REPO_URL="${REPO_URL:-https://github.com/AdityaPatil7900/musical_genre_illustrators.git}"
+REPO_DIR="${REPO_DIR:-musical_genre_illustrators}"
 
 SSH_DEFAULT="ssh -i $DEFAULT_KEY -p $VM_PORT -o StrictHostKeyChecking=accept-new"
 SSH_MINE="ssh -i $PERSONAL_KEY_PRIV -p $VM_PORT -o StrictHostKeyChecking=accept-new"
