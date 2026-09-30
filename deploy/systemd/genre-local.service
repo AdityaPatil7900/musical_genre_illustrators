@@ -1,0 +1,19 @@
+[Unit]
+Description=Musical Genre Illustrator - Locally-executed product (Case Study 2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=student-admin
+WorkingDirectory=/home/student-admin/musical_genre_illustrator
+EnvironmentFile=/home/student-admin/musical_genre_illustrator/.env
+Environment=APP_MODE=local
+Environment=PORT=8013
+ExecStart=/home/student-admin/musical_genre_illustrator/.venv/bin/python vm_app.py
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+[Install]
+WantedBy=multi-user.target
