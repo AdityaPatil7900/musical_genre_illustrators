@@ -6,11 +6,11 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=student-admin
-WorkingDirectory=/home/student-admin/musical_genre_illustrator
-EnvironmentFile=/home/student-admin/musical_genre_illustrator/.env
+WorkingDirectory=/home/student-admin/musical_genre_illustrators
+EnvironmentFile=/home/student-admin/musical_genre_illustrators/deploy/.env
 Environment=APP_MODE=local
 Environment=PORT=8013
-ExecStart=/home/student-admin/musical_genre_illustrator/.venv/bin/python vm_app.py
+ExecStart=/home/student-admin/musical_genre_illustrators/.venv/bin/python vm_app.py
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=0
