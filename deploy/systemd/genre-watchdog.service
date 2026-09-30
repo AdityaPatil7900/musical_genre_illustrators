@@ -4,4 +4,4 @@ Description=Genre Illustrator recovery watchdog (one-shot, triggered by timer)
 [Service]
 Type=oneshot
 User=student-admin
-ExecStart=/bin/bash /home/student-admin/musical_genre_illustrator/deploy/watchdog.sh
+ExecStart=/bin/bash /home/student-admin/musical_genre_illustrators/deploy/watchdog.sh
