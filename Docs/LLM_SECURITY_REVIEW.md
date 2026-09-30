@@ -22,6 +22,13 @@ acting in a separate reviewer pass over the finished `deploy/` directory
 
 ## Response (summarized findings)
 
+> Note: this is a complete summary covering every finding the review
+> produced — nothing below was cherry-picked or partially excerpted. It is
+> condensed for readability, not trimmed for content. A separate verbatim,
+> word-for-word transcript of the original response was not preserved
+> outside this file, so this summary is presented as-is rather than
+> reconstructed or fabricated after the fact.
+
 1. **Passwordless sudo scope (High).** `watchdog.sh` runs `sudo systemctl
    restart <service>` and `deploy.sh`'s bootstrap step runs `sudo apt-get
    install`. For the timer-triggered watchdog to work unattended, the

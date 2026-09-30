@@ -133,6 +133,63 @@ Discord webhook accepts POSTs (HTTP 204) during this same window. (As with
 Test 2, no Discord-channel screenshot was captured from this CLI-only
 session — check the channel directly for the two messages.)
 
+## Real (unplanned) resilience event — 2026-09-30 07:00–07:11 UTC
+
+Unlike Tests 1, 2, and 4 above, this was **not a staged test** — it happened
+under genuine resource load on the VM (from unrelated ad-hoc boot-testing
+work earlier the same session) and was caught after the fact by reading the
+live logs. It's included here because it exercised the same recovery paths
+as the synthetic tests, under real conditions, and surfaced two findings
+the synthetic tests didn't: a real Discord delivery failure, and a longer
+real-world recovery time.
+
+`monitor.log`:
+```
+2026-09-30T07:00:23.347317+00:00 reading: {"cpu_pct": 10.2, "mem_pct": 95.8, ...}
+2026-09-30T07:00:26.880899+00:00 ENTERING degraded mode.
+2026-09-30T07:00:44.211262+00:00 Discord notify failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2026-09-30T07:01:21.684731+00:00 reading: {"cpu_pct": 16.5, "mem_pct": 44.1, ...}
+2026-09-30T07:01:21.729435+00:00 EXITING degraded mode.
+```
+
+`watchdog.log`:
+```
+2026-09-30T07:02:27+00:00 Local product UNRESPONSIVE (port 8013). Restarting genre-local.service...
+2026-09-30T07:02:35+00:00 Local product STILL DOWN after restart attempt.
+2026-09-30T07:04:36+00:00 Local product UNRESPONSIVE (port 8013). Restarting genre-local.service...
+2026-09-30T07:04:45+00:00 Local product STILL DOWN after restart attempt.
+2026-09-30T07:06:57+00:00 Local product UNRESPONSIVE (port 8013). Restarting genre-local.service...
+2026-09-30T07:07:05+00:00 Local product STILL DOWN after restart attempt.
+2026-09-30T07:08:46+00:00 Local product UNRESPONSIVE (port 8013). Restarting genre-local.service...
+2026-09-30T07:08:54+00:00 Local product STILL DOWN after restart attempt.
+2026-09-30T07:11:02+00:00 Local product recovered (port 8013).
+```
+
+**What actually happened:** real memory exhaustion (95.8% — not a lowered
+threshold) correctly triggered degraded mode at 07:00:26, and correctly
+cleared it 55 seconds later once memory pressure eased. That part worked
+exactly as designed. But the "entering degraded mode" Discord notification
+itself **failed to send** — `Connection aborted... RemoteDisconnected`,
+distinct from the "webhook rejected the request" failure mode; this looks
+like the HTTP connection to Discord's API being dropped mid-request, most
+plausibly because the VM was under enough memory/network pressure at that
+exact moment (95.8% mem) to disrupt the outbound connection itself. This is
+a real-world failure mode the synthetic Test 4 (which ran under light load
+and got a clean HTTP 204) never exercised.
+
+Separately, `genre-local.service` needed **4 consecutive watchdog cycles**
+(07:02, 07:04, 07:06, 07:08) before recovering at 07:11:02 — roughly **8.5
+minutes**, versus the ~2m33s recovery documented in Test 2. Both events
+involve the same service and the same underlying cold-start/memory-pressure
+mechanism discussed in "Challenges encountered" below, but this real
+episode shows the failure mode compounding for longer than the synthetic
+test captured — worth noting as a real-world data point beyond what the
+staged tests showed, not a contradiction of them.
+
+**Current state:** verified healthy after this event and unrelated to it —
+`genre-local.service` has been `active` with HTTP 200 on port 8013 in every
+subsequent check this session.
+
 ## Challenges encountered
 
 - Cold-start model load time (~2 minutes under this VM's memory pressure)

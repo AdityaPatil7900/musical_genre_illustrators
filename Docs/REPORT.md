@@ -120,14 +120,30 @@ session (2026-09-30):
   reflect this honestly as a recommended-but-not-applied finding (see
   Section 5) rather than leave a false "fixed" claim in the deliverable.
 
-- **External reachability confirmed, not just localhost.** Per
-  `Docs/SSH_ACCESS.md`, only the 8000+group-number port (8012, the API-based
-  product) is the designated externally-reachable port for this
-  assignment. Tested from outside the VM (a separate machine on the WPI
-  network) on 2026-09-30: `curl http://paffenroth-23.dyn.wpi.edu:8012`
-  returned HTTP 200; the same request against `:8013` (local-mode product)
-  timed out/refused, confirming it is intentionally not externally exposed
-  rather than accidentally broken.
+- **External reachability at port 8012 is broken — confirmed WPI-side,
+  outside this group's control, not fixable from the repo or VM.** Per
+  `Docs/SSH_ACCESS.md`, port 8012 (8000+group-number) is the designated
+  externally-reachable port for this assignment. `curl
+  http://paffenroth-23.dyn.wpi.edu:8012/config` returns HTTP 200, but the
+  **wrong application**: a generic "🌟 Effective AI Chatbot" template
+  (Gradio version `6.17.3`, `app_id` `10168599867892325926`) — not the
+  Musical Genre Illustrator. The same `/config` call against `localhost:8012`
+  **on the VM itself** correctly returns our app (Gradio `6.29.0`, `app_id`
+  `2793058993949344086`). This mismatch reproduces identically whether
+  curled from an outside machine or from the VM curling its own public
+  hostname, which rules out a client-side or caching explanation.
+  Root cause identified: the VM's actual network interface address is
+  `10.188.207.246` (private), while `paffenroth-23.dyn.wpi.edu` resolves to
+  `130.215.182.120` — a different, public-facing address — confirmed
+  identically via DNS lookup from both the VM and an external machine. Port
+  8012 on that public hostname is evidently routed by WPI-side
+  infrastructure to a different backend entirely, not to this VM. This is a
+  DNS/reverse-proxy configuration issue on WPI's network, not anything this
+  group's deployment can fix — no code or config change in this repo
+  changes what `paffenroth-23.dyn.wpi.edu` resolves to or how WPI's network
+  routes that hostname's traffic. Port 8013 (local-mode product) correctly
+  refuses external connections, consistent with it not being the
+  designated externally-exposed port.
 
 - **A real secret was found sitting in a tracked template file.**
   `deploy/.env.example` — meant to hold only placeholder values — had a real
