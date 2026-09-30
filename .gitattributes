@@ -1,0 +1,16 @@
+# Force LF line endings for scripts regardless of the committer's OS/git
+# autocrlf setting. This repo was previously broken by a Windows dev
+# machine (core.autocrlf=true) silently reintroducing CRLF into committed
+# shell scripts, which caused bash syntax errors when deployed to the VM
+# (see Docs/REPORT.md and Docs/RESILIENCE_TESTING.md for the incident).
+*.sh   text eol=lf
+*.py   text eol=lf
+*.service text eol=lf
+*.timer   text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Never normalize binary-ish or intentionally CRLF files
+*.ps1  text eol=crlf

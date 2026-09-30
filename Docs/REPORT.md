@@ -84,19 +84,30 @@ session (2026-09-30):
 - **CRLF line endings from a Windows working tree broke both `watchdog.sh`
   and the live `deploy/.env` on the VM.** This local development machine has
   `git config core.autocrlf=true`, so the working-tree copy of `watchdog.sh`
-  had CRLF line endings even though the committed blob is clean LF. Copying
-  it to the VM as-is produced `watchdog.sh: line 22: syntax error near
-  unexpected token '{\r'` on every single watchdog timer cycle — confirmed
-  via `journalctl -u genre-watchdog.service`, which showed this exact
-  failure on 7 consecutive 2-minute cycles. Separately, `deploy/.env` on the
-  VM itself also had CRLF endings, so `source .env` set `DISCORD_WEBHOOK_URL`
-  and `HF_TOKEN` with a trailing `\r` baked into the value — visible
-  indirectly as `Warning: You are sending unauthenticated requests to the HF
-  Hub` in `genre-api.service`'s logs despite `HF_TOKEN` being set. Fixed by
-  stripping `\r` from both files (`sed 's/\r$//'`) and restarting the
-  affected services; confirmed the HF warning stopped appearing in the logs
-  after the fix, and confirmed the Discord webhook accepts POSTs (HTTP 204)
-  after the `.env` fix.
+  had CRLF line endings. Copying it to the VM as-is produced `watchdog.sh:
+  line 22: syntax error near unexpected token '{\r'` on every single
+  watchdog timer cycle — confirmed via `journalctl -u genre-watchdog.service`,
+  which showed this exact failure on 7 consecutive 2-minute cycles.
+  Separately, `deploy/.env` on the VM itself also had CRLF endings, so
+  `source .env` set `DISCORD_WEBHOOK_URL` and `HF_TOKEN` with a trailing
+  `\r` baked into the value — visible indirectly as `Warning: You are
+  sending unauthenticated requests to the HF Hub` in `genre-api.service`'s
+  logs despite `HF_TOKEN` being set. At the time, this was fixed only on the
+  VM itself — stripping `\r` from the *deployed* copies (`sed 's/\r$//'`)
+  and restarting the affected services, via a manual `scp` of the
+  sed-stripped file rather than a git commit — which was enough to stop the
+  HF warning and confirm the Discord webhook accepted POSTs (HTTP 204), but
+  left the actual committed git blob for `deploy/deploy.sh`,
+  `deploy/watchdog.sh`, and `deploy/monitor.py` still CRLF-contaminated. A
+  later read-only verification pass (2026-09-30) caught this: a fresh clone
+  of the repo on Linux running `bash deploy/watchdog.sh` directly would have
+  hit the identical syntax error, since the fix had never actually been
+  committed. This has now been fixed for real — all three files normalized
+  to LF (`sed -i 's/\r$//'`), verified with `bash -n` / `python -m
+  py_compile`, and committed, plus a `.gitattributes` added
+  (`*.sh`/`*.py`/`*.service`/`*.timer`/etc. forced to `eol=lf`) so a Windows
+  checkout with `core.autocrlf=true` can't silently reintroduce CRLF into
+  these files again.
 
 - **Report overclaimed a security fix that was never applied.** The LLM
   security review's own summary and `Docs/RECOVERY.md` both stated a scoped
