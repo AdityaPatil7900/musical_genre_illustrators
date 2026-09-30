@@ -302,8 +302,13 @@ implemented via `deploy/monitor.py`, threshold-triggered Discord alerts, and
 a degraded-mode flag that `vm_app.py` checks to skip image generation under
 load; verified end-to-end (entering and exiting degraded mode, with a real
 adaptive-response request) on 2026-09-30 — see Section 3 above and Test 4
-in `Docs/RESILIENCE_TESTING.md`. Red-Teaming (#5) not attempted: a script
-(`red_team_check.sh`, outside this repo) exists to probe whether other
-groups' VMs still accept the shared default key, but running it means
-connecting to other students' assigned systems, which was not run without
-explicit direction to do so.*
+in `Docs/RESILIENCE_TESTING.md`. Red-Teaming (#5) attempted — full
+evidence-based writeup in `Docs/RED_TEAMING.md`. Summary: 3 groups (13, 14,
+20) confirmed still reachable with the shared default `student-admin_key`
+during the authorized window (timestamps 2026-09-29 15:22–16:09 UTC), each
+check limited to `hostname`/`date` only, no other access. Group 13 was
+notified via Canvas with the finding and a recommendation to rotate their
+key. Group 20's vulnerability is documented but **no notification was sent
+to them** — a known gap in this submission. Two other groups reportedly
+probed during the same window (3, 6) plus one more (17) are not claimed as
+findings since no saved evidence for them could be located.*
