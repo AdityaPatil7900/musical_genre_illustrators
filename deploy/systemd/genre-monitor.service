@@ -4,7 +4,7 @@ Description=Genre Illustrator resource monitor (one-shot, triggered by timer)
 [Service]
 Type=oneshot
 User=student-admin
-WorkingDirectory=/home/student-admin/musical_genre_illustrator
-EnvironmentFile=/home/student-admin/musical_genre_illustrator/.env
-Environment=WATCHDOG_STATE_DIR=/home/student-admin/musical_genre_illustrator/.watchdog
-ExecStart=/home/student-admin/musical_genre_illustrator/.venv/bin/python deploy/monitor.py
+WorkingDirectory=/home/student-admin/musical_genre_illustrators
+EnvironmentFile=/home/student-admin/musical_genre_illustrators/deploy/.env
+Environment=WATCHDOG_STATE_DIR=/home/student-admin/musical_genre_illustrators/.watchdog
+ExecStart=/home/student-admin/musical_genre_illustrators/.venv/bin/python deploy/monitor.py
