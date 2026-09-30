@@ -1,0 +1,13 @@
+# VM deployment requirements (no `spaces` package -- that's HF-Spaces-only
+# and has no effect / isn't importable off HF Spaces infrastructure).
+gradio>=4.0.0
+transformers>=4.40.0
+huggingface_hub>=0.24.0
+diffusers>=0.27.0
+accelerate
+torch
+torchaudio
+soundfile
+pillow
+psutil
+requests
