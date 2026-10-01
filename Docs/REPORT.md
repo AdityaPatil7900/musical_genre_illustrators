@@ -145,6 +145,18 @@ session (2026-09-30):
   refuses external connections, consistent with it not being the
   designated externally-exposed port.
 
+  **Rechecked 2026-10-01 after the VM wipe/rebuild (Section 3, Test 3):**
+  still broken, but its behavior changed — `curl
+  http://paffenroth-23.dyn.wpi.edu:8012/config` now returns **no response
+  at all** (`HTTP 000`, empty reply, confirmed on repeated attempts),
+  rather than the previously-observed HTTP 200 with the wrong app's
+  content. Reproduced symmetrically from both an external machine and from
+  the VM curling its own public hostname; `localhost:8012` on the VM
+  continues to return our correct app (HTTP 200) throughout. The VM
+  rebuild did not fix the underlying WPI-side routing problem — it just
+  changed which specific failure mode it presents as. Still entirely
+  outside this group's control.
+
 - **A real secret was found sitting in a tracked template file.**
   `deploy/.env.example` — meant to hold only placeholder values — had a real
   Discord webhook URL committed to it in the repo's git history. Restored
@@ -235,12 +247,23 @@ and full log excerpts are in `Docs/RESILIENCE_TESTING.md`.
   `monitor.py`; the webhook itself was independently confirmed reachable
   (HTTP 204) during this session.
 
-- **Test 3 — full VM wipe / redeploy.** Not attempted this session (the VM
-  was not wiped) — `deploy/deploy.sh` was not re-run end-to-end as a
-  destructive test, since doing so is a genuinely disruptive, hard-to-reverse
-  action against a live, working deployment and wasn't necessary to
-  demonstrate the required resilience scenarios. Documented in
-  `Docs/RESILIENCE_TESTING.md` as the untested scenario.
+- **Test 3 — full VM wipe / redeploy. Not a staged test — the VM was
+  genuinely wiped by the professor on 2026-10-01**, discovered mid-session
+  via a changed SSH host key and a rejected personal key, confirmed via an
+  empty home directory and zero `genre-*` systemd units. Full real-world
+  redeploy from `deploy/deploy.sh`, with three previously-unseen bugs found
+  and fixed live: a flawed `python3-venv` detection check that silently
+  skipped a required package install, the watchdog's 2-minute cycle
+  repeatedly interrupting the very first (cache-less) model download, and
+  unbuffered Python output hiding error messages from `journalctl`. All
+  three fixes committed back to `deploy.sh` and the systemd units. Both
+  products verified end-to-end afterward with real audio: local-mode fully
+  succeeded (real classification + real generated artwork); API-mode's
+  classification and LLM prompt step succeeded, but the final remote image
+  call hit `402 Payment Required` — the Hugging Face account's monthly
+  Inference Providers credits are exhausted, an external billing limit, not
+  a deployment defect (the existing error handling degraded gracefully as
+  designed). Full account in `Docs/RESILIENCE_TESTING.md`.
 
 On the scoped-sudoers question specifically: it was never actually applied
 (see Section 5) — `student-admin` has blanket `sudo` from a course-provided

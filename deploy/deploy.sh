@@ -69,14 +69,30 @@ EOF
 log "Key rotation complete. Only your group's key is authorized from here on."
 
 # ---- Step 2: bootstrap remote environment ----------------------------------
-log "Step 2/5: installing system dependencies (python3-venv, git) on the VM..."
+log "Step 2/5: installing system dependencies (python3-venv, ffmpeg, git) on the VM..."
 $SSH_MINE "$VM_USER@$VM_HOST" bash -s <<'EOF'
 set -e
+NEED_APT_UPDATE=0
 if ! command -v git >/dev/null; then
-  sudo apt-get update -y && sudo apt-get install -y git
+  NEED_APT_UPDATE=1
 fi
-if ! python3 -m venv --help >/dev/null 2>&1; then
-  sudo apt-get update -y && sudo apt-get install -y python3-venv python3-pip
+# `python3 -m venv --help` exits 0 even when ensurepip isn't actually
+# installed (it just prints help text without creating a venv), so that
+# alone is not a reliable check -- try a real venv creation instead.
+if ! python3 -m venv /tmp/.venv_check >/dev/null 2>&1; then
+  NEED_APT_UPDATE=1
+else
+  rm -rf /tmp/.venv_check
+fi
+if ! command -v ffmpeg >/dev/null; then
+  NEED_APT_UPDATE=1
+fi
+if [ "$NEED_APT_UPDATE" = "1" ]; then
+  sudo apt-get update -y
+  command -v git >/dev/null || sudo apt-get install -y git
+  python3 -m venv /tmp/.venv_check2 >/dev/null 2>&1 && rm -rf /tmp/.venv_check2 || \
+    sudo apt-get install -y "python3.$(python3 -c 'import sys; print(sys.version_info[1])')-venv" python3-pip
+  command -v ffmpeg >/dev/null || sudo apt-get install -y ffmpeg
 fi
 EOF
 

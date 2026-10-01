@@ -85,12 +85,82 @@ cd musical_genre_illustrator-main/deploy
 **Expected:** full redeploy completes in one run (key rotation will no-op
 since the VM's default key is fresh again; bootstrap/clone/install/systemd
 steps all re-run cleanly), both services reachable again afterward.
-**Actual result:** Not attempted in this session. The VM was not wiped
-(professor-triggered or otherwise), and a simulated wipe (stopping/disabling
-all units + deleting the repo directory) was judged too disruptive to
-perform against a live, currently-working deployment without a specific
-need to validate it right now. Left as an untested scenario — `deploy.sh`
-itself was not modified in a way that would newly risk this path.
+
+**Actual result (2026-10-01) — this really happened, not staged.** Mid-way
+through an unrelated testing session, the VM stopped responding on both SSH
+and the app ports. Diagnosis: the SSH host key fingerprint had changed
+(`SHA256:5eiszgZkJi4naOH24mOGstu/v3iST1X3tAPuJkasg44`, different from the
+previously-trusted key), and the default `student-admin_key` worked again
+while our rotated personal key was rejected — conclusive evidence the VM
+had been wiped back to its initial image (empty home directory, zero
+`genre-*` systemd units, fresh Ubuntu 22.04, confirmed via `ls -la ~` and
+`systemctl list-units 'genre-*'`).
+
+Recovery, in order:
+1. Accepted the new host key (`ssh-keygen -R` to clear the stale entry,
+   then `-o StrictHostKeyChecking=accept-new` on reconnect) and confirmed
+   the default key worked again.
+2. Ran `deploy/deploy.sh`. **Step 1 (key rotation) succeeded cleanly** —
+   personal key added, verified, default key removed. **Step 2 (system
+   dependency bootstrap) revealed a real bug**: its check
+   `python3 -m venv --help >/dev/null 2>&1` exits 0 even when `ensurepip`
+   isn't actually installed (`--help` only prints usage text; it never
+   tries to create a venv), so it never ran `apt-get install
+   python3-venv`. **Step 3 (clone)** succeeded. **Step 4 (venv + pip
+   install) failed for real**: `python3 -m venv .venv` errored with
+   `ensurepip is not available ... apt install python3.10-venv`, exactly
+   the bug in step 2's detection logic. The script's `set -euo pipefail`
+   aborted the deploy here, before step 5.
+3. Fixed by hand on the live VM: `sudo apt-get install -y python3.10-venv
+   ffmpeg` (ffmpeg being the other known gap from a prior session, this
+   time installed proactively rather than discovered via a failed
+   request), recreated the venv, re-ran `pip install -r
+   requirements-vm.txt`, manually copied real secrets into `deploy/.env`
+   (stripping CRLF — the Windows-dev-machine line-ending issue recurred in
+   the freshly-copied `.env.example` and in all 6 systemd unit files
+   copied via `scp`, confirmed via `grep -c $'\r'` showing 7-20 instances
+   per file; stripped with `sed -i 's/\r$//'`), then manually completed
+   step 5 (systemd install + enable + start).
+4. **Found and fixed a new, VM-wipe-specific bug**: `genre-watchdog.timer`
+   has `OnBootSec=1min`, so on a system that just booted *and* just had its
+   services started, the watchdog's first cycle landed squarely during the
+   very first cold-start model load (no HF cache exists yet on a wiped VM,
+   so this load is much slower than a warm restart — includes downloading
+   ~500MB+ of model weights). The watchdog correctly detected "unresponsive"
+   and restarted the services — repeatedly, every 2 minutes, forever
+   interrupting the download before it could finish. Confirmed via
+   `watchdog.log` showing `UNRESPONSIVE`/`STILL DOWN` pairs at 20:14,
+   20:16, 21:12, and 21:14. Fixed by temporarily `sudo systemctl stop
+   genre-watchdog.timer`, letting both services complete their first load
+   uninterrupted (`genre-api` up at 20:20, `genre-local` up at 20:28 on the
+   first attempt), then re-enabling the timer — confirmed via `watchdog.log`
+   logging clean `recovered` entries afterward with no further restarts.
+5. **Found and fixed a real logging bug while diagnosing the above**:
+   neither systemd unit set `PYTHONUNBUFFERED=1`, so `vm_app.py`'s
+   `print()` output (including error messages) sat in Python's stdout
+   buffer and never reached `journalctl` until the buffer filled or the
+   process exited — made live diagnosis of in-progress failures
+   impossible. Added `Environment=PYTHONUNBUFFERED=1` to both
+   `genre-api.service` and `genre-local.service`.
+6. **End-to-end verification, real audio through the real app**: local-mode
+   succeeded twice (genre `classical`, confidence `0.97`, real generated
+   artwork, 169–219s). API-mode's genre classification and LLM
+   prompt-writing succeeded consistently, but the final remote image
+   step returned `None` — root-caused via the now-unbuffered logs to
+   `402 Payment Required` from Hugging Face's Inference Providers
+   (`fal-ai` router): "You have depleted your monthly included credits."
+   This is an external account billing limit, not a deployment defect —
+   `generate_image_remote`'s existing try/except handled it exactly as
+   designed (graceful `None`, no crash), which is itself a working
+   resilience behavior, just not a full "success" for that one feature.
+
+**Total time from detecting the wipe to both services fully functional:**
+approximately 1 hour, including live debugging of three previously-unseen
+bugs (venv-detection, watchdog-vs-cold-start-interval, unbuffered
+logging) that only surfaced because this was a genuine from-scratch
+rebuild rather than a warm restart. All three fixes were committed back
+to `deploy/deploy.sh` and the two systemd unit files so they're handled
+automatically on any future wipe.
 
 ## Test 4: Resource-threshold degraded mode (extra credit #6)
 
