@@ -15,7 +15,12 @@ Differences from app.py (which targets Hugging Face Spaces):
     and managed by systemd.
 
 Run:
-  APP_MODE=api   PORT=8012 HF_TOKEN=xxx python vm_app.py
+  # NOTE: PORT is the port this process binds to ON THE VM. The WPI-side
+  # port forwarder maps external http://<host>:8012 -> internal port 7860
+  # (Gradio's default), not internal port 8012 -- see Docs/SSH_ACCESS.md and
+  # the group's port-mapping email from the course staff. genre-api.service
+  # sets PORT=7860 accordingly; this is NOT the externally-visible port.
+  APP_MODE=api   PORT=7860 HF_TOKEN=xxx python vm_app.py
   APP_MODE=local PORT=8013            python vm_app.py
 """
 

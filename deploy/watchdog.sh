@@ -58,5 +58,5 @@ check_and_restart() {
   echo "down" > "$prev_state_file"
 }
 
-check_and_restart "API-based product" 8012 genre-api.service
+check_and_restart "API-based product" 7860 genre-api.service
 check_and_restart "Local product"     8013 genre-local.service

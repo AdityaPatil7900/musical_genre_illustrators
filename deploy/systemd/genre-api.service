@@ -9,7 +9,7 @@ User=student-admin
 WorkingDirectory=/home/student-admin/musical_genre_illustrators
 EnvironmentFile=/home/student-admin/musical_genre_illustrators/deploy/.env
 Environment=APP_MODE=api
-Environment=PORT=8012
+Environment=PORT=7860
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/student-admin/musical_genre_illustrators/.venv/bin/python vm_app.py
 Restart=always
