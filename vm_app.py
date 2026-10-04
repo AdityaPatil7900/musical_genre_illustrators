@@ -94,6 +94,12 @@ def get_local_image_pipe():
         )
         device = "cuda" if torch and torch.cuda.is_available() else "cpu"
         local_image_pipe.to(device)
+        # Diffusers' built-in attention-slicing trades a small amount of
+        # compute time for materially lower peak memory during inference --
+        # safe on both local-mode's startup load and API-mode's in-process
+        # failover load, so applied unconditionally rather than gated on
+        # low-memory mode specifically.
+        local_image_pipe.enable_attention_slicing()
         print(f"[startup] tiny-sd on device: {device}")
     return local_image_pipe
 
@@ -140,9 +146,29 @@ def create_visual_prompt_remote(genre):
         return FALLBACK_PROMPTS.get(genre.lower(), f"a colorful abstract illustration representing {genre} music")
 
 
-def generate_image_local(prompt):
+def generate_image_local(prompt, low_memory=False):
+    """Generate an image with the local tiny-sd pipeline.
+
+    low_memory=True is used only by API-mode's in-process failover path
+    (see analyze_music below), where tiny-sd is loaded on top of an
+    already-running process that also holds the classifier and a live
+    Gradio/HF-client stack -- on this VM's 4GB RAM, that combination was
+    observed pushing memory to 84-86% with heavy swapping during a normal
+    (steps=15, native-resolution) generation, correlated with the process
+    exiting during the heaviest compute window (see Test 5 in
+    Docs/RESILIENCE_TESTING.md for the full investigation). Plain
+    APP_MODE=local is unaffected by this flag (default False, unchanged
+    behavior) since that path has no extra classifier/HF-client overhead
+    sharing the same process and was already confirmed working as-is.
+    """
+    import gc
+
     pipe = get_local_image_pipe()
-    image = pipe(prompt, num_inference_steps=15).images[0]
+    if low_memory:
+        gc.collect()
+        image = pipe(prompt, num_inference_steps=10, height=384, width=384).images[0]
+    else:
+        image = pipe(prompt, num_inference_steps=15).images[0]
     return image
 
 
@@ -185,9 +211,9 @@ def analyze_music(audio_file):
             # tiny-sd pipeline rather than returning no image at all. The
             # local model is lazily loaded on this first failover only, so a
             # healthy API-mode deployment never pays its startup cost.
-            print("[FAILOVER] Remote image generation unavailable -- falling back to local tiny-sd.")
-            image = generate_image_local(visual_prompt)
-            image_source = f"Local {LOCAL_IMAGE_MODEL_ID} (automatic failover — remote image generation unavailable)"
+            print("[FAILOVER] Remote image generation unavailable -- falling back to local tiny-sd (low-memory mode).")
+            image = generate_image_local(visual_prompt, low_memory=True)
+            image_source = f"Local {LOCAL_IMAGE_MODEL_ID} (automatic failover, low-memory mode — remote image generation unavailable)"
 
     saved_path = None
     if image is not None:
