@@ -262,8 +262,13 @@ and full log excerpts are in `Docs/RESILIENCE_TESTING.md`.
   classification and LLM prompt step succeeded, but the final remote image
   call hit `402 Payment Required` — the Hugging Face account's monthly
   Inference Providers credits are exhausted, an external billing limit, not
-  a deployment defect (the existing error handling degraded gracefully as
-  designed). Full account in `Docs/RESILIENCE_TESTING.md`.
+  a deployment defect. Rather than leave that as a dead end, API-mode now
+  automatically fails over to the local `tiny-sd` pipeline when the remote
+  call fails (timeout, rate-limit, auth, or billing error), lazily loaded
+  only on first actual failover so a healthy deployment pays no extra cost
+  — verified end-to-end through the real external URL after fixing a real
+  memory-pressure bug the failover path exposed (see Test 5, full
+  investigation and fix in `Docs/RESILIENCE_TESTING.md`).
 
 On the scoped-sudoers question specifically: it was never actually applied
 (see Section 5) — `student-admin` has blanket `sudo` from a course-provided
