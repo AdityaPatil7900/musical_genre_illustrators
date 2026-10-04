@@ -180,6 +180,35 @@ def generate_image_remote(prompt):
         return None
 
 
+FALLBACK_ART_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fallback_art")
+
+
+def get_static_fallback_image(genre):
+    """Final deterministic image fallback -- a pre-rendered, zero-compute
+    static image per genre (assets/fallback_art/<genre>.png).
+
+    This deliberately does NOT attempt live local model inference
+    (tiny-sd) inside the API-mode process. Two real end-to-end tests
+    (2026-10-03/04, see Test 5 in Docs/RESILIENCE_TESTING.md) showed that
+    loading and running tiny-sd inside an already-running API-mode process
+    (genre classifier + HF InferenceClient already resident) pushed this
+    4GB VM into real memory pressure -- even the low-memory-mode variant
+    (fewer steps, smaller resolution) remained a real, confirmed resource
+    risk rather than a guarantee. Rather than keep tuning parameters
+    around a demonstrated ceiling, the image failover tier now mirrors
+    the existing LLM failover's final "static" tier: it costs nothing to
+    load, cannot fail, and guarantees a result every time.
+    """
+    from PIL import Image
+
+    path = os.path.join(FALLBACK_ART_DIR, f"{genre.lower()}.png")
+    if not os.path.exists(path):
+        # Unknown/unexpected genre label -- fall back to rock's art rather
+        # than crash; still deterministic and still zero-compute.
+        path = os.path.join(FALLBACK_ART_DIR, "rock.png")
+    return Image.open(path).convert("RGB")
+
+
 def analyze_music(audio_file):
     if audio_file is None:
         return "No file uploaded", "N/A", "N/A", None, None, "N/A"
@@ -207,13 +236,14 @@ def analyze_music(audio_file):
         if image is None:
             # Automatic image-generation failover (Case Study 2): the remote
             # Qwen-Image call failed (timeout, rate-limit, auth error, or a
-            # billing/quota limit such as HTTP 402) -- fall back to the local
-            # tiny-sd pipeline rather than returning no image at all. The
-            # local model is lazily loaded on this first failover only, so a
-            # healthy API-mode deployment never pays its startup cost.
-            print("[FAILOVER] Remote image generation unavailable -- falling back to local tiny-sd (low-memory mode).")
-            image = generate_image_local(visual_prompt, low_memory=True)
-            image_source = f"Local {LOCAL_IMAGE_MODEL_ID} (automatic failover, low-memory mode — remote image generation unavailable)"
+            # billing/quota limit such as HTTP 402) -- fall back to a
+            # pre-rendered static image rather than returning no image at
+            # all. This deliberately does NOT run tiny-sd inside this
+            # already-loaded API-mode process -- see get_static_fallback_image()
+            # for why (confirmed memory-pressure failures on this VM).
+            print("[FAILOVER] Remote image generation unavailable -- using static fallback artwork.")
+            image = get_static_fallback_image(genre)
+            image_source = "Static fallback artwork (automatic failover — remote image generation unavailable)"
 
     saved_path = None
     if image is not None:
@@ -230,8 +260,8 @@ with gr.Blocks(title=f"Music-to-Art Generator [{APP_MODE}]") as demo:
     gr.Markdown(f"# Music-to-Art Generator — {mode_label}")
     extra_note = (
         " If the remote image call fails (timeout, rate-limit, or a billing/quota "
-        "limit), it automatically falls back to the local tiny-sd model so a result "
-        "is still produced." if APP_MODE == "api" else ""
+        "limit), it automatically falls back to a pre-rendered static image so a "
+        "result is still produced." if APP_MODE == "api" else ""
     )
     gr.Markdown(
         "Upload audio. A local model always detects the genre. "
