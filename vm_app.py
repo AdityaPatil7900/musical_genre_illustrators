@@ -72,16 +72,34 @@ print("[startup] Loading local genre classifier...")
 classifier = pipeline("audio-classification", model=GENRE_MODEL_ID)
 
 local_image_pipe = None
-if APP_MODE == "local":
-    from diffusers import DiffusionPipeline
 
-    print("[startup] Loading local image generator (tiny-sd)...")
-    local_image_pipe = DiffusionPipeline.from_pretrained(
-        LOCAL_IMAGE_MODEL_ID, torch_dtype=torch.float32 if torch else None
-    )
-    device = "cuda" if torch and torch.cuda.is_available() else "cpu"
-    local_image_pipe.to(device)
-    print(f"[startup] tiny-sd on device: {device}")
+
+def get_local_image_pipe():
+    """Lazily loads the local tiny-sd pipeline on first actual need.
+
+    In APP_MODE=local this is called once eagerly at startup (same timing as
+    before this change). In APP_MODE=api it is NOT loaded at startup -- it is
+    only loaded the first time generate_image_remote() actually fails, so a
+    healthy API-mode deployment never pays the extra memory/load cost. This
+    mirrors the lazy-failover-load pattern already used for the local LLM in
+    app.py's adaptive-failover design.
+    """
+    global local_image_pipe
+    if local_image_pipe is None:
+        from diffusers import DiffusionPipeline
+
+        print(f"[startup] Loading local image generator ({LOCAL_IMAGE_MODEL_ID})...")
+        local_image_pipe = DiffusionPipeline.from_pretrained(
+            LOCAL_IMAGE_MODEL_ID, torch_dtype=torch.float32 if torch else None
+        )
+        device = "cuda" if torch and torch.cuda.is_available() else "cpu"
+        local_image_pipe.to(device)
+        print(f"[startup] tiny-sd on device: {device}")
+    return local_image_pipe
+
+
+if APP_MODE == "local":
+    get_local_image_pipe()
 
 remote_client = None
 if APP_MODE == "api":
@@ -123,7 +141,8 @@ def create_visual_prompt_remote(genre):
 
 
 def generate_image_local(prompt):
-    image = local_image_pipe(prompt, num_inference_steps=15).images[0]
+    pipe = get_local_image_pipe()
+    image = pipe(prompt, num_inference_steps=15).images[0]
     return image
 
 
@@ -137,7 +156,7 @@ def generate_image_remote(prompt):
 
 def analyze_music(audio_file):
     if audio_file is None:
-        return "No file uploaded", "N/A", "N/A", None, None
+        return "No file uploaded", "N/A", "N/A", None, None, "N/A"
 
     genre, confidence = classify_audio(audio_file)
 
@@ -148,14 +167,27 @@ def analyze_music(audio_file):
             "⚠️ System is currently operating near capacity — image generation "
             "is temporarily disabled. Genre classification is still available."
         )
-        return genre, f"{confidence:.2f}", note, None, None
+        return genre, f"{confidence:.2f}", note, None, None, "N/A (degraded mode)"
 
+    image_source = None
     if APP_MODE == "local":
         visual_prompt = FALLBACK_PROMPTS.get(genre.lower(), f"a colorful abstract illustration representing {genre} music")
         image = generate_image_local(visual_prompt)
+        image_source = f"Local {LOCAL_IMAGE_MODEL_ID} (fixed deployment mode)"
     else:
         visual_prompt = create_visual_prompt_remote(genre)
         image = generate_image_remote(visual_prompt)
+        image_source = f"Remote {REMOTE_IMAGE_MODEL_ID} (HF Inference)"
+        if image is None:
+            # Automatic image-generation failover (Case Study 2): the remote
+            # Qwen-Image call failed (timeout, rate-limit, auth error, or a
+            # billing/quota limit such as HTTP 402) -- fall back to the local
+            # tiny-sd pipeline rather than returning no image at all. The
+            # local model is lazily loaded on this first failover only, so a
+            # healthy API-mode deployment never pays its startup cost.
+            print("[FAILOVER] Remote image generation unavailable -- falling back to local tiny-sd.")
+            image = generate_image_local(visual_prompt)
+            image_source = f"Local {LOCAL_IMAGE_MODEL_ID} (automatic failover — remote image generation unavailable)"
 
     saved_path = None
     if image is not None:
@@ -163,17 +195,22 @@ def analyze_music(audio_file):
         saved_path = os.path.join(OUTPUT_DIR, f"{genre}_{timestamp}.png")
         image.save(saved_path)
 
-    return genre, f"{confidence:.2f}", visual_prompt, image, saved_path
+    return genre, f"{confidence:.2f}", visual_prompt, image, saved_path, image_source
 
 
 mode_label = "API-based (remote LLM + remote Qwen-Image)" if APP_MODE == "api" else "Local (local tiny-sd, no network calls)"
 
 with gr.Blocks(title=f"Music-to-Art Generator [{APP_MODE}]") as demo:
     gr.Markdown(f"# Music-to-Art Generator — {mode_label}")
+    extra_note = (
+        " If the remote image call fails (timeout, rate-limit, or a billing/quota "
+        "limit), it automatically falls back to the local tiny-sd model so a result "
+        "is still produced." if APP_MODE == "api" else ""
+    )
     gr.Markdown(
         "Upload audio. A local model always detects the genre. "
-        f"This deployment ({APP_MODE}) is fixed to the **{mode_label}** image-generation path "
-        "for Case Study 2's deployment requirements."
+        f"This deployment ({APP_MODE}) primarily uses the **{mode_label}** image-generation path "
+        f"for Case Study 2's deployment requirements.{extra_note}"
     )
 
     audio_input = gr.Audio(type="filepath", label="Upload Audio")
@@ -186,11 +223,12 @@ with gr.Blocks(title=f"Music-to-Art Generator [{APP_MODE}]") as demo:
     prompt_output = gr.Textbox(label="AI Interpretation", lines=3)
     image_output = gr.Image(label="Generated Artwork")
     file_output = gr.File(label="Saved image file")
+    image_source_output = gr.Textbox(label="Image generated by")
 
     analyze_btn.click(
         fn=analyze_music,
         inputs=[audio_input],
-        outputs=[genre_output, confidence_output, prompt_output, image_output, file_output],
+        outputs=[genre_output, confidence_output, prompt_output, image_output, file_output, image_source_output],
     )
 
     gr.Markdown("Health check endpoint: `/` returns 200 when this Gradio server is up.")
