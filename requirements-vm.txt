@@ -11,3 +11,4 @@ soundfile
 pillow
 psutil
 requests
+prometheus-client
