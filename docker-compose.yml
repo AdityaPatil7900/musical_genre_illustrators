@@ -1,0 +1,82 @@
+# Case Study 3 -- full container stack: both products, each self-reporting
+# Prometheus app + node-exporter metrics, plus a Prometheus server and a
+# Grafana server to visualize them. Run from the repo root:
+#
+#   cp docker/.env.example docker/.env   # then edit docker/.env
+#   docker compose --env-file docker/.env up -d --build
+#
+# See docker/README.md for the full walkthrough (claiming ports, exposing
+# with ngrok, Grafana setup).
+
+services:
+  genre-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: genre-api
+    environment:
+      APP_MODE: api
+      PORT: 7860
+      METRICS_PORT: 8000
+      HF_TOKEN: ${HF_TOKEN}
+    ports:
+      - "${API_APP_PORT:-8012}:7860"
+      - "${API_METRICS_PORT:-8002}:8000"
+      - "${API_NODE_EXPORTER_PORT:-9102}:9100"
+    volumes:
+      - genre_api_images:/opt/app/generated_images
+    networks:
+      - genre_net
+    restart: unless-stopped
+
+  genre-local:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: genre-local
+    environment:
+      APP_MODE: local
+      PORT: 7860
+      METRICS_PORT: 8000
+    ports:
+      - "${LOCAL_APP_PORT:-8013}:7860"
+      - "${LOCAL_METRICS_PORT:-8003}:8000"
+      - "${LOCAL_NODE_EXPORTER_PORT:-9103}:9100"
+    volumes:
+      - genre_local_images:/opt/app/generated_images
+    networks:
+      - genre_net
+    restart: unless-stopped
+
+  prometheus:
+    build:
+      context: ./docker/prometheus
+    container_name: genre-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - genre_net
+    depends_on:
+      - genre-api
+      - genre-local
+    restart: unless-stopped
+
+  grafana:
+    build:
+      context: ./docker/grafana
+    container_name: genre-grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - genre_net
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+networks:
+  genre_net:
+    driver: bridge
+
+volumes:
+  genre_api_images:
+  genre_local_images:

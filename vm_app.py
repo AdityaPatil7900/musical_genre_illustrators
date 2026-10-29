@@ -25,15 +25,57 @@ Run:
 """
 
 import os
+import time
 from datetime import datetime
 
 import gradio as gr
 from transformers import pipeline
+from prometheus_client import start_http_server, Counter, Summary, Gauge
 
 try:
     import torch
 except ImportError:
     torch = None
+
+# ---------------------------------------------------------------------------
+# PROMETHEUS METRICS (Case Study 3)
+#
+# Exposed on :8000/metrics via prometheus_client's own built-in HTTP server
+# (started in __main__, below). The companion prometheus-node-exporter
+# process (started alongside this one in the Docker CMD) covers host/container
+# resource metrics (CPU, memory, disk, etc.) on :9100 separately -- these are
+# the *application*-level metrics requested by the rubric (4-10 custom
+# metrics describing how the product itself is functioning).
+# ---------------------------------------------------------------------------
+REQUEST_COUNTER = Counter(
+    "app_requests_total", "Total number of analyze_music requests received"
+)
+SUCCESSFUL_REQUESTS = Counter(
+    "app_successful_requests_total", "Total number of requests that completed without error"
+)
+FAILED_REQUESTS = Counter(
+    "app_failed_requests_total", "Total number of requests that raised an exception"
+)
+REQUEST_DURATION = Summary(
+    "app_request_duration_seconds", "End-to-end time spent processing a request"
+)
+GENRE_CLASSIFICATIONS = Counter(
+    "app_genre_classifications_total", "Count of classified genres, by genre label", ["genre"]
+)
+CLASSIFIER_CONFIDENCE = Summary(
+    "app_classifier_confidence", "Confidence score reported by the genre classifier"
+)
+IMAGE_GENERATION_DURATION = Summary(
+    "app_image_generation_duration_seconds", "Time spent in the image-generation step alone"
+)
+DEGRADED_MODE = Gauge(
+    "app_degraded_mode", "1 if the app is currently in degraded mode (image gen disabled), else 0"
+)
+IMAGE_SOURCE_COUNTER = Counter(
+    "app_image_source_total",
+    "Which code path actually produced the returned artwork",
+    ["source"],
+)
 
 APP_MODE = os.environ.get("APP_MODE", "local").lower()
 PORT = int(os.environ.get("PORT", "7860"))
@@ -146,6 +188,7 @@ def create_visual_prompt_remote(genre):
         return FALLBACK_PROMPTS.get(genre.lower(), f"a colorful abstract illustration representing {genre} music")
 
 
+@IMAGE_GENERATION_DURATION.time()
 def generate_image_local(prompt, low_memory=False):
     """Generate an image with the local tiny-sd pipeline.
 
@@ -172,6 +215,7 @@ def generate_image_local(prompt, low_memory=False):
     return image
 
 
+@IMAGE_GENERATION_DURATION.time()
 def generate_image_remote(prompt):
     try:
         return remote_client.text_to_image(prompt, model=REMOTE_IMAGE_MODEL_ID)
@@ -210,48 +254,69 @@ def get_static_fallback_image(genre):
 
 
 def analyze_music(audio_file):
-    if audio_file is None:
-        return "No file uploaded", "N/A", "N/A", None, None, "N/A"
+    REQUEST_COUNTER.inc()
+    start_t = time.perf_counter()
+    try:
+        if audio_file is None:
+            FAILED_REQUESTS.inc()
+            return "No file uploaded", "N/A", "N/A", None, None, "N/A"
 
-    genre, confidence = classify_audio(audio_file)
+        genre, confidence = classify_audio(audio_file)
+        GENRE_CLASSIFICATIONS.labels(genre=genre).inc()
+        CLASSIFIER_CONFIDENCE.observe(confidence)
 
-    if is_degraded():
-        # Adaptive response to high resource usage (Case Study 2, extra credit #6):
-        # skip the expensive image-generation step and return genre only.
-        note = (
-            "⚠️ System is currently operating near capacity — image generation "
-            "is temporarily disabled. Genre classification is still available."
-        )
-        return genre, f"{confidence:.2f}", note, None, None, "N/A (degraded mode)"
+        degraded = is_degraded()
+        DEGRADED_MODE.set(1 if degraded else 0)
 
-    image_source = None
-    if APP_MODE == "local":
-        visual_prompt = FALLBACK_PROMPTS.get(genre.lower(), f"a colorful abstract illustration representing {genre} music")
-        image = generate_image_local(visual_prompt)
-        image_source = f"Local {LOCAL_IMAGE_MODEL_ID} (fixed deployment mode)"
-    else:
-        visual_prompt = create_visual_prompt_remote(genre)
-        image = generate_image_remote(visual_prompt)
-        image_source = f"Remote {REMOTE_IMAGE_MODEL_ID} (HF Inference)"
-        if image is None:
-            # Automatic image-generation failover (Case Study 2): the remote
-            # Qwen-Image call failed (timeout, rate-limit, auth error, or a
-            # billing/quota limit such as HTTP 402) -- fall back to a
-            # pre-rendered static image rather than returning no image at
-            # all. This deliberately does NOT run tiny-sd inside this
-            # already-loaded API-mode process -- see get_static_fallback_image()
-            # for why (confirmed memory-pressure failures on this VM).
-            print("[FAILOVER] Remote image generation unavailable -- using static fallback artwork.")
-            image = get_static_fallback_image(genre)
-            image_source = "Static fallback artwork (automatic failover — remote image generation unavailable)"
+        if degraded:
+            # Adaptive response to high resource usage (Case Study 2, extra credit #6):
+            # skip the expensive image-generation step and return genre only.
+            note = (
+                "⚠️ System is currently operating near capacity — image generation "
+                "is temporarily disabled. Genre classification is still available."
+            )
+            IMAGE_SOURCE_COUNTER.labels(source="none (degraded mode)").inc()
+            SUCCESSFUL_REQUESTS.inc()
+            return genre, f"{confidence:.2f}", note, None, None, "N/A (degraded mode)"
 
-    saved_path = None
-    if image is not None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        saved_path = os.path.join(OUTPUT_DIR, f"{genre}_{timestamp}.png")
-        image.save(saved_path)
+        image_source = None
+        if APP_MODE == "local":
+            visual_prompt = FALLBACK_PROMPTS.get(genre.lower(), f"a colorful abstract illustration representing {genre} music")
+            image = generate_image_local(visual_prompt)
+            image_source = f"Local {LOCAL_IMAGE_MODEL_ID} (fixed deployment mode)"
+            IMAGE_SOURCE_COUNTER.labels(source="local_tiny_sd").inc()
+        else:
+            visual_prompt = create_visual_prompt_remote(genre)
+            image = generate_image_remote(visual_prompt)
+            image_source = f"Remote {REMOTE_IMAGE_MODEL_ID} (HF Inference)"
+            if image is None:
+                # Automatic image-generation failover (Case Study 2): the remote
+                # Qwen-Image call failed (timeout, rate-limit, auth error, or a
+                # billing/quota limit such as HTTP 402) -- fall back to a
+                # pre-rendered static image rather than returning no image at
+                # all. This deliberately does NOT run tiny-sd inside this
+                # already-loaded API-mode process -- see get_static_fallback_image()
+                # for why (confirmed memory-pressure failures on this VM).
+                print("[FAILOVER] Remote image generation unavailable -- using static fallback artwork.")
+                image = get_static_fallback_image(genre)
+                image_source = "Static fallback artwork (automatic failover — remote image generation unavailable)"
+                IMAGE_SOURCE_COUNTER.labels(source="static_fallback").inc()
+            else:
+                IMAGE_SOURCE_COUNTER.labels(source="remote_qwen_image").inc()
 
-    return genre, f"{confidence:.2f}", visual_prompt, image, saved_path, image_source
+        saved_path = None
+        if image is not None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            saved_path = os.path.join(OUTPUT_DIR, f"{genre}_{timestamp}.png")
+            image.save(saved_path)
+
+        SUCCESSFUL_REQUESTS.inc()
+        return genre, f"{confidence:.2f}", visual_prompt, image, saved_path, image_source
+    except Exception:
+        FAILED_REQUESTS.inc()
+        raise
+    finally:
+        REQUEST_DURATION.observe(time.perf_counter() - start_t)
 
 
 mode_label = "API-based (remote LLM + remote Qwen-Image)" if APP_MODE == "api" else "Local (local tiny-sd, no network calls)"
@@ -290,4 +355,9 @@ with gr.Blocks(title=f"Music-to-Art Generator [{APP_MODE}]") as demo:
     gr.Markdown("Health check endpoint: `/` returns 200 when this Gradio server is up.")
 
 if __name__ == "__main__":
+    # Expose Prometheus application metrics at :8000/metrics (Case Study 3).
+    METRICS_PORT = int(os.environ.get("METRICS_PORT", "8000"))
+    start_http_server(METRICS_PORT)
+    DEGRADED_MODE.set(1 if is_degraded() else 0)
+    print(f"[startup] Prometheus metrics server listening on :{METRICS_PORT}/metrics")
     demo.launch(server_name="0.0.0.0", server_port=PORT)
