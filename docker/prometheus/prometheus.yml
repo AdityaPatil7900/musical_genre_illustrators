@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+
+# Targets use Docker Compose service names (resolved on the shared
+# "genre_net" bridge network defined in docker-compose.yml), not host ports --
+# Prometheus talks to each container directly on its internal 8000/9100.
+scrape_configs:
+  - job_name: 'genre_api_app'
+    static_configs:
+      - targets: ['genre-api:8000']   # vm_app.py Prometheus client metrics (API product)
+
+  - job_name: 'genre_api_node_exporter'
+    static_configs:
+      - targets: ['genre-api:9100']   # container/host metrics (API product)
+
+  - job_name: 'genre_local_app'
+    static_configs:
+      - targets: ['genre-local:8000'] # vm_app.py Prometheus client metrics (local product)
+
+  - job_name: 'genre_local_node_exporter'
+    static_configs:
+      - targets: ['genre-local:9100'] # container/host metrics (local product)

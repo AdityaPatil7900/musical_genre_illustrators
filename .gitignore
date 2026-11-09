@@ -7,3 +7,7 @@ generated_images/
 *.key
 *_key
 !*.pub
+
+# Case Study 3 -- Docker/Prometheus/Grafana/ngrok secrets, never commit
+docker/.env
+docker/ngrok/ngrok.yml

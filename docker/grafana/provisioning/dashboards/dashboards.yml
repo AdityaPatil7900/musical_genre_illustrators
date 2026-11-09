@@ -1,0 +1,14 @@
+apiVersion: 1
+
+# Drop any exported dashboard JSON into docker/grafana/provisioning/dashboards/
+# and it will be auto-loaded on container start -- optional, Grafana also
+# works fine with dashboards built by hand through the UI.
+providers:
+  - name: default
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards

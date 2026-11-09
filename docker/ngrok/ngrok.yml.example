@@ -1,0 +1,30 @@
+# Copy to docker/ngrok/ngrok.yml and fill in your own authtoken
+# (https://dashboard.ngrok.com/get-started/your-authtoken), or export
+# NGROK_AUTHTOKEN and skip the authtoken line entirely -- ngrok reads it
+# from the environment too.
+#
+# Run from the VM (after `docker compose up -d`):
+#   ngrok start --all --config docker/ngrok/ngrok.yml
+#
+# This opens three tunnels in ONE ngrok agent session (fine on the free
+# plan -- one agent, multiple tunnels). Ports below match the HOST ports
+# docker-compose.yml maps by default; change them here if you changed
+# API_APP_PORT / LOCAL_APP_PORT / GRAFANA_PORT in docker/.env.
+#
+# If your ngrok plan/version ever rejects multiple tunnels in one config,
+# run each of these three as its own `ngrok http <port>` in a separate
+# terminal/tmux pane instead -- same effect, just one process per tunnel.
+
+version: "2"
+authtoken: YOUR_NGROK_AUTHTOKEN_HERE
+
+tunnels:
+  genre-api:
+    addr: 8012
+    proto: http
+  genre-local:
+    addr: 8013
+    proto: http
+  grafana:
+    addr: 3000
+    proto: http

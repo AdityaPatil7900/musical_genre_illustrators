@@ -1,0 +1,13 @@
+.git
+.github
+venv
+.venv
+__pycache__
+*.pyc
+generated_images
+.watchdog
+Docs
+test
+*.log
+.env
+tmp
