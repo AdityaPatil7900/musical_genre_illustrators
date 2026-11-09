@@ -52,8 +52,14 @@ services:
     build:
       context: ./docker/prometheus
     container_name: genre-prometheus
-    ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+    # No host port mapping: Prometheus is only ever reached internally, via
+    # genre_net (by Grafana's datasource) or `docker exec ... wget
+    # localhost:9090/...` (see docker/README.md step 3). Publishing a host
+    # port here (previously ${PROMETHEUS_PORT}:9090) hit a reproducible
+    # Docker-daemon-level "address already in use" failure on this shared
+    # VM with nothing actually listening at the OS level (confirmed via
+    # `ss -tln`), not fixable without sudo -- removing the unneeded binding
+    # avoids it entirely rather than working around it.
     networks:
       - genre_net
     depends_on:
