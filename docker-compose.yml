@@ -51,7 +51,7 @@ services:
   prometheus:
     build:
       context: ./docker/prometheus
-    container_name: genre-prometheus
+    container_name: genre-prometheus-01
     # No host port mapping: Prometheus is only ever reached internally, via
     # genre_net (by Grafana's datasource) or `docker exec ... wget
     # localhost:9090/...` (see docker/README.md step 3). Publishing a host
@@ -60,6 +60,16 @@ services:
     # VM with nothing actually listening at the OS level (confirmed via
     # `ss -tln`), not fixable without sudo -- removing the unneeded binding
     # avoids it entirely rather than working around it.
+    #
+    # container_name is "genre-prometheus-01", not "genre-prometheus": the
+    # literal name "genre-prometheus" accumulated stale Docker-internal
+    # network-sandbox state after many rapid recreate/destroy cycles during
+    # initial deployment troubleshooting -- containers under that exact name
+    # got "Up" with NO network interface at all (confirmed via `docker exec
+    # ... ip addr` showing only loopback), while the identical image under
+    # any other name (including a plain `docker run` test) attached to
+    # genre_net correctly every time. Renaming sidesteps the stale state
+    # rather than fighting it further.
     networks:
       - genre_net
     depends_on:
