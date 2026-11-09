@@ -26,10 +26,16 @@ RUN pip install --no-cache-dir -r /opt/app/requirements-vm.txt
 
 # Install prometheus-node-exporter for container/host-level metrics (:9100),
 # per the Case Study 3 rubric's "Monitoring of the Docker Container" item.
+# Also install ffmpeg -- the HF audio-classification pipeline shells out to
+# a system ffmpeg binary to decode uploaded audio files; without it every
+# real /analyze_music call fails with "ffmpeg was not found but is required
+# to load audio files from filename" (this exact gap was already found and
+# fixed once before, on the Case Study 2 VM -- see Docs/REPORT.md -- but
+# never carried over into this Dockerfile until now).
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get upgrade -yq ca-certificates && \
-    apt-get install -yq --no-install-recommends prometheus-node-exporter && \
+    apt-get install -yq --no-install-recommends prometheus-node-exporter ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # Now bring in application code (changes most often -> last layer).

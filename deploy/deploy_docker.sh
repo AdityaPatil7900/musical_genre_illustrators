@@ -23,12 +23,19 @@
 set -euo pipefail
 
 # ---- Configuration ---------------------------------------------------------
-VM_HOST="${VM_HOST:-paffenroth-23.dyn.wpi.edu}"   # shared Docker VM for CS3 -- confirm with course staff
-VM_PORT="${VM_PORT:-REPLACE_WITH_YOUR_GROUPS_SSH_PORT}"
-VM_USER="${VM_USER:-student-admin}"
+# Confirmed by TA Simeon on 2026-11-09: CS3 uses a DIFFERENT shared VM than
+# the earlier guess (paffenroth-23.dyn.wpi.edu:21003 was wrong -- that never
+# worked). All groups log into melnibone.wpi.edu on the same port 2222,
+# distinguished by per-group username (not a shared student-admin account).
+VM_HOST="${VM_HOST:-melnibone.wpi.edu}"
+VM_PORT="${VM_PORT:-2222}"
+VM_USER="${VM_USER:-group12}"
 
-PERSONAL_KEY_PRIV="${PERSONAL_KEY_PRIV:-../../tmp/mykey}"   # reuse the CS2 personal key if this VM accepts it,
-                                                             # otherwise point at whatever key this VM issued you
+PERSONAL_KEY_PRIV="${PERSONAL_KEY_PRIV:-$HOME/.ssh/wpi_cs553_cs3_key}"   # THE key actually authorized on
+                                                                          # melnibone (confirmed by TA Simeon +
+                                                                          # ssh-keygen -y match, 2026-11-09).
+                                                                          # tmp/cs3_mykey was a second, never-
+                                                                          # submitted keypair -- do not use it.
 
 REPO_URL="${REPO_URL:-https://github.com/AdityaPatil7900/musical_genre_illustrators.git}"
 REPO_DIR="${REPO_DIR:-musical_genre_illustrators}"
