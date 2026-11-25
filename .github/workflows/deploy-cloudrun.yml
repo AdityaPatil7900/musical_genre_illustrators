@@ -1,0 +1,98 @@
+# Case Study 4, Deliverable 5 -- automated build + deploy of the API
+# product's Docker container to GCP Cloud Run on every push to
+# case-study-4.
+#
+# Required repo secrets (set these in GitHub: Settings -> Secrets and
+# variables -> Actions -> New repository secret). None of these values are
+# ever written to this repo or to any chat -- you create them directly in
+# GitHub's UI:
+#   GCP_PROJECT_ID  - your GCP project id
+#   GCP_SA_KEY      - the full JSON key of a service account with
+#                     Artifact Registry Writer + Cloud Run Admin +
+#                     Service Account User roles (create via:
+#                     gcloud iam service-accounts create github-deployer
+#                     then gcloud iam service-accounts keys create key.json
+#                     --iam-account=github-deployer@<project>.iam.gserviceaccount.com,
+#                     then paste the contents of key.json as this secret,
+#                     then delete the local key.json)
+#   HF_TOKEN        - your Hugging Face token, pushed into Secret Manager
+#                     by this workflow on every run (idempotent)
+name: Deploy API product to Cloud Run
+
+on:
+  push:
+    branches: [case-study-4]
+    paths:
+      - "vm_app.py"
+      - "Dockerfile.cloud"
+      - "requirements-vm.txt"
+      - "assets/**"
+      - ".github/workflows/deploy-cloudrun.yml"
+  workflow_dispatch: {}
+
+env:
+  REGION: us-central1
+  REPO_NAME: genre-api-repo
+  SERVICE_NAME: genre-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Ensure Artifact Registry repo exists
+        run: |
+          gcloud artifacts repositories describe "${REPO_NAME}" --location="${REGION}" \
+            || gcloud artifacts repositories create "${REPO_NAME}" \
+                 --repository-format=docker --location="${REGION}"
+
+      - name: Build and push image
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${REPO_NAME}/${SERVICE_NAME}:${{ github.sha }}"
+          docker build -f Dockerfile.cloud -t "${IMAGE}" .
+          docker push "${IMAGE}"
+          echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Sync HF_TOKEN into Secret Manager
+        run: |
+          if gcloud secrets describe hf-token >/dev/null 2>&1; then
+            printf '%s' "${{ secrets.HF_TOKEN }}" | gcloud secrets versions add hf-token --data-file=-
+          else
+            printf '%s' "${{ secrets.HF_TOKEN }}" | gcloud secrets create hf-token --data-file=-
+          fi
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE }}
+          flags: >-
+            --allow-unauthenticated
+            --port=8080
+            --memory=2Gi
+            --cpu=2
+            --min-instances=0
+            --max-instances=2
+            --set-env-vars=APP_MODE=api
+            --set-secrets=HF_TOKEN=hf-token:latest
+
+      - name: Print service URL
+        run: gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format='value(status.url)'

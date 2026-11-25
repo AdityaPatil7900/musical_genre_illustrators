@@ -1,0 +1,78 @@
+# ============================================================================
+# Case Study 4 -- lean image for the API-based product ONLY, built for
+# serverless/managed-container platforms (GCP Cloud Run, Azure Container
+# Apps, AWS ECS Fargate) rather than the always-on VM used in Case Study 3.
+#
+# Differences from the Case Study 3 Dockerfile, and why:
+#
+#   1. No prometheus-node-exporter. That was for host-level metrics on a
+#      VM Prometheus scraped directly (Case Study 3's rubric item). None of
+#      the three managed container platforms expose a host to scrape, and
+#      none of them route traffic to anything but the single ingress port
+#      the platform is told about -- so a node-exporter process here would
+#      just be dead weight that slows every cold start for nothing.
+#
+#   2. The genre classifier model is pre-downloaded and baked into the
+#      image at BUILD time (see the RUN step below), instead of being
+#      fetched from the Hugging Face Hub the first time the process starts.
+#      This matters specifically because Cloud Run / Container Apps / ECS
+#      Fargate all default to scaling to zero when idle: every single
+#      request after an idle period pays a fresh container cold start, and
+#      vm_app.py loads `dima806/music_genres_classification` eagerly at
+#      import time in EVERY mode (see vm_app.py, module level, unconditional
+#      on APP_MODE). Without this, every cold start re-downloads the model
+#      from the Hub -- slow, and also just relying on an external network
+#      call succeeding on every cold start. Baking it into the image turns
+#      that into a local disk load instead.
+#
+#   3. CMD only starts the Python app -- no background node-exporter process
+#      to manage inside the container.
+#
+#   4. PORT defaults to 8080, not 7860. Cloud Run injects PORT=8080 itself
+#      at runtime regardless of what's set here (vm_app.py already reads
+#      the PORT env var dynamically, so that's a no-op change for Cloud
+#      Run specifically) -- but Azure Container Apps and AWS ECS do NOT
+#      auto-inject a PORT value, so this image needs a sane default that
+#      matches the ingress/target-port configured on those two platforms.
+#      8080 is used consistently across all three platforms' configs in
+#      deploy/gcp, deploy/azure, deploy/aws so there is exactly one port
+#      number to keep in sync, not three different ones.
+# ============================================================================
+FROM python:3.10-slim
+
+WORKDIR /opt/app
+
+# Python dependencies first (layer caching on rebuilds).
+COPY requirements-vm.txt /opt/app/requirements-vm.txt
+RUN pip install --no-cache-dir -r /opt/app/requirements-vm.txt
+
+# ffmpeg is still required: the HF audio-classification pipeline shells out
+# to it to decode uploaded audio files. Same requirement as the VM image.
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get upgrade -yq ca-certificates && \
+    apt-get install -yq --no-install-recommends ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
+# Bake the genre classifier into the image so cold starts load it from
+# local disk (the default HF cache path, ~/.cache/huggingface) instead of
+# downloading it from the Hub on every scale-from-zero request.
+RUN python -c "from transformers import pipeline; pipeline('audio-classification', model='dima806/music_genres_classification')"
+
+# Application code last (changes most often -> last layer).
+COPY vm_app.py /opt/app/vm_app.py
+COPY assets /opt/app/assets
+
+RUN mkdir -p /opt/app/generated_images /opt/app/.watchdog
+
+EXPOSE 8080
+
+ENV GRADIO_SERVER_NAME="0.0.0.0"
+ENV PORT=8080
+ENV METRICS_PORT=8000
+ENV APP_MODE=api
+# HF_TOKEN is supplied at deploy time from each platform's secret store
+# (GCP Secret Manager / Azure Container Apps secrets / AWS Secrets Manager)
+# -- never baked into this image or committed anywhere in this repo.
+
+CMD ["python", "/opt/app/vm_app.py"]
