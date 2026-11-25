@@ -89,3 +89,43 @@ same convention as Case Study 3.
   API-based product?" and paste the full response + model name + prompt.
   Don't paraphrase it.
 - 4g (human-only) -- your own call as an MLOps manager; not mine to write.
+
+## Account-specific modification: pre-existing ECS execution role (AWS)
+
+`deploy/aws/deploy_ecs.sh` accepts an optional `EXISTING_EXEC_ROLE_NAME`
+variable. When set, the script skips creating `genreCS4EcsExecutionRole` and
+uses the named, pre-provisioned role as the ECS task execution role (useful
+on sandboxed accounts that block `iam:CreateRole`). Left unset, the script
+behaves as before.
+
+```bash
+EXISTING_EXEC_ROLE_NAME=<role-name> ./deploy/aws/deploy_ecs.sh
+```
+
+**Not run for this team:** the AWS credentials provided belong to the IAM
+*user* `ML_dev`, which has no ECR/ECS/ELB/EC2/IAM/Secrets Manager
+permissions, so the AWS deploy could not proceed. See `CS4_STATUS.md`.
+
+## Account-specific modifications: GCP and Azure
+
+**GCP Cloud Run** (`deploy/gcp/deploy_cloudrun.sh`, mirrored in the workflow):
+- Granted the default compute service account `roles/secretmanager.secretAccessor`
+  on the `hf-token` secret. New projects no longer grant this implicitly, and
+  the first deploy failed with "Permission denied on secret".
+- `--execution-environment=gen2`: on the default gVisor sandbox the first
+  request hung until the 300 s request timeout (the same image answered in
+  ~3 s locally and on Azure); gen2 fixed it.
+- `--no-cpu-throttling`, `--memory=4Gi` (was 2Gi), and `NO_PROXY=localhost,127.0.0.1`:
+  Gradio's startup self-check against localhost failed on throttled CPU and
+  crashed the instance.
+
+**Azure Container Apps** (`deploy/azure/deploy_containerapps.sh`):
+- The Students subscription only allows these regions: belgiumcentral,
+  westus2, francecentral, norwayeast, northcentralus (policy "Allowed
+  resource deployment regions"), so the default `eastus` was rejected. Run
+  with `LOCATION=westus2`.
+- ACR Tasks (`az acr build`) is blocked on this subscription
+  (`TasksOperationsNotAllowed`), so the script falls back to a local
+  `docker build` + `docker push`.
+- Registered the `Microsoft.OperationalInsights` provider, which Container
+  Apps environments need and fresh subscriptions lack.

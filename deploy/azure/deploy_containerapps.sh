@@ -25,6 +25,9 @@ APP_NAME="genre-api"
 echo "== Registering required providers (idempotent, safe to re-run) =="
 az provider register --namespace Microsoft.App --wait
 az provider register --namespace Microsoft.ContainerRegistry --wait
+# Container Apps environments create a Log Analytics workspace; fresh
+# subscriptions (e.g. Azure for Students) are not registered for it by default.
+az provider register --namespace Microsoft.OperationalInsights --wait
 
 echo "== Creating resource group =="
 az group create --name "${RESOURCE_GROUP}" --location "${LOCATION}" >/dev/null
@@ -34,7 +37,15 @@ az acr create --resource-group "${RESOURCE_GROUP}" --name "${ACR_NAME}" \
   --sku Basic --admin-enabled true >/dev/null
 
 echo "== Building and pushing image via ACR Tasks (no local docker needed) =="
-az acr build --registry "${ACR_NAME}" --image genre-api:latest -f Dockerfile.cloud .
+if ! az acr build --registry "${ACR_NAME}" --image genre-api:latest -f Dockerfile.cloud .; then
+  # Azure for Students subscriptions can block ACR Tasks
+  # (TasksOperationsNotAllowed). Fall back to a local docker build + push.
+  echo "== ACR Tasks unavailable; falling back to local docker build + push =="
+  az acr login --name "${ACR_NAME}"
+  LOCAL_IMAGE="${ACR_NAME}.azurecr.io/genre-api:latest"
+  docker build -f Dockerfile.cloud -t "${LOCAL_IMAGE}" .
+  docker push "${LOCAL_IMAGE}"
+fi
 
 echo "== Creating Container Apps environment =="
 az containerapp env create --name "${ENV_NAME}" \

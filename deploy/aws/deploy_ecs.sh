@@ -20,6 +20,8 @@
 #   HF_TOKEN   - your Hugging Face token
 # Optional:
 #   AWS_REGION - defaults to us-east-1
+#   EXISTING_EXEC_ROLE_NAME - name of a pre-existing ECS execution role to
+#       use instead of creating one (e.g. LabRole on AWS Academy Learner Lab)
 set -euo pipefail
 
 : "${HF_TOKEN:?Set HF_TOKEN in your local shell before running this script}"
@@ -56,6 +58,15 @@ else
 fi
 HF_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id genre/hf-token --query ARN --output text)
 
+if [ -n "${EXISTING_EXEC_ROLE_NAME:-}" ]; then
+  # AWS Academy Learner Lab accounts block iam:CreateRole, so the role
+  # creation below would fail. Set EXISTING_EXEC_ROLE_NAME=LabRole (the
+  # pre-provisioned role) to skip creation and use that role instead.
+  # Unset (the default), the script creates its own role as before.
+  echo "== Using existing ECS execution role: ${EXISTING_EXEC_ROLE_NAME} (skipping role creation) =="
+  EXEC_ROLE_NAME="${EXISTING_EXEC_ROLE_NAME}"
+  aws iam get-role --role-name "${EXEC_ROLE_NAME}" >/dev/null
+else
 echo "== Ensuring ECS task execution role exists =="
 if ! aws iam get-role --role-name "${EXEC_ROLE_NAME}" >/dev/null 2>&1; then
   aws iam create-role --role-name "${EXEC_ROLE_NAME}" \
@@ -69,6 +80,7 @@ if ! aws iam get-role --role-name "${EXEC_ROLE_NAME}" >/dev/null 2>&1; then
     --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"secretsmanager:GetSecretValue\",\"Resource\":\"${HF_SECRET_ARN}\"}]}"
   echo "   (waiting ~10s for IAM role propagation)"
   sleep 10
+fi
 fi
 EXEC_ROLE_ARN=$(aws iam get-role --role-name "${EXEC_ROLE_NAME}" --query Role.Arn --output text)
 

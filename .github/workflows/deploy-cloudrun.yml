@@ -87,11 +87,13 @@ jobs:
           flags: >-
             --allow-unauthenticated
             --port=8080
-            --memory=2Gi
+            --memory=4Gi
             --cpu=2
+            --no-cpu-throttling
+            --execution-environment=gen2
             --min-instances=0
             --max-instances=2
-            --set-env-vars=APP_MODE=api
+            --set-env-vars=^@^APP_MODE=api@NO_PROXY=localhost,127.0.0.1
             --set-secrets=HF_TOKEN=hf-token:latest
 
       - name: Print service URL

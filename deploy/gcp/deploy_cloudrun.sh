@@ -48,17 +48,27 @@ else
   printf '%s' "${HF_TOKEN}" | gcloud secrets create hf-token --data-file=-
 fi
 
+echo "== Granting Cloud Run runtime service account access to the secret =="
+# New projects' default compute service account no longer gets Secret Manager
+# access automatically; without this the revision fails to start.
+PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
+gcloud secrets add-iam-policy-binding hf-token \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor" >/dev/null
+
 echo "== Deploying to Cloud Run =="
 gcloud run deploy "${SERVICE_NAME}" \
   --image="${IMAGE}" \
   --region="${REGION}" \
   --allow-unauthenticated \
   --port=8080 \
-  --memory=2Gi \
+  --memory=4Gi \
   --cpu=2 \
+  --no-cpu-throttling \
+  --execution-environment=gen2 \
   --min-instances=0 \
   --max-instances=2 \
-  --set-env-vars=APP_MODE=api \
+  --set-env-vars=^@^APP_MODE=api@NO_PROXY=localhost,127.0.0.1 \
   --set-secrets=HF_TOKEN=hf-token:latest
 
 echo "== Done. External URL: =="
