@@ -1,13 +1,15 @@
 # Case Study 4 -- product URLs (Team 12)
 
-Paste these into the class Google Sheet, "Case Study 4" tab, Team 12 row.
+GCP: https://genre-api-pzputmgawa-uc.a.run.app
+Azure: https://genre-api.politehill-0ba96f06.westus2.azurecontainerapps.io
+AWS: BLOCKED - see CS4_STATUS.md (support case <CASE NUMBER, fill in when issued>)
 
-| Column | URL | Status |
-|---|---|---|
-| GCP product link | https://genre-api-pzputmgawa-uc.a.run.app | Verified end to end |
-| Azure product link | https://genre-api.politehill-0ba96f06.westus2.azurecontainerapps.io | Verified end to end |
-| AWS product link | _not deployed_ | Blocked, see CS4_STATUS.md |
+Both live URLs were re-verified on 2026-11-26: the Gradio UI loads (HTTP 200)
+and an MP3 request returns genre `blues` (0.82). Image generation currently
+uses the static fallback on both -- see "Image generation" in CS4_STATUS.md.
+Both services scale to zero, so the first request after idle is slower.
 
-Verified = Gradio UI loads, and a real request with an MP3 returned
-genre `blues` (confidence 0.82), an LLM-written visual prompt, and an image.
-Both services scale to zero, so the first request after idle takes longer.
+## What to paste into the Sheet (Case Study 4 tab, Team 12 row)
+- GCP product link:   https://genre-api-pzputmgawa-uc.a.run.app
+- Azure product link: https://genre-api.politehill-0ba96f06.westus2.azurecontainerapps.io
+- AWS product link:   BLOCKED - SCP denies ECS/ECR/ELB/EC2 (support case <CASE NUMBER>)
